@@ -1,0 +1,65 @@
+// BibTeX Lark LALR(1) Grammar
+// Handles standard entry types, nested braces, quoted/brace values, LaTeX commands
+
+%ignore /[ \t\r\n]+/
+
+// SynCode expects a rule named "start"; delegate to bibtex
+start: bibtex
+
+// Zero or more entries (rule names must be lowercase in Lark)
+bibtex: entry*
+
+// Entry: @type{key, fields} or @type(key, fields)
+entry: AT type LBRACE key COMMA field_list RBRACE
+     | AT type LPAREN key COMMA field_list RPAREN
+
+// Entry type: use IDENTIFIER so words like "Proceedings" inside field values are not lexed as entry-type terminals
+type: IDENTIFIER
+
+// Citation key and field name: use same IDENTIFIER to avoid lexer conflict
+key: IDENTIFIER
+
+// Comma-separated list of fields; two alternatives avoid shift/reduce on trailing comma
+field_list: field (COMMA field)* COMMA   // with trailing comma
+          | (field (COMMA field)*)?     // without trailing comma or empty
+
+// Field: name = value
+field: name EQUALS value
+
+name: IDENTIFIER
+
+// Value: braced { ... } or quoted " ... "
+value: braced_value | quoted_value
+
+// Braced value with nested braces; content may contain \{ \} and LaTeX
+braced_value: LBRACE braced_content RBRACE
+
+// Lexer can produce IDENTIFIER/COMMA/EQUALS/LPAREN/RPAREN inside braces (e.g. "2020", "(", ")"); accept them
+braced_content: (braced_value | quoted_value | ESCAPED_BRACE | BACKSLASH_OTHER | OTHER_CHAR | IDENTIFIER | COMMA | EQUALS | LPAREN | RPAREN)*
+
+// Quoted value; "" is escaped quote
+quoted_value: QUOTE quoted_content QUOTE
+
+quoted_content: (ESCAPED_QUOTE | QUOTED_CHAR)*
+
+// Terminals
+AT: "@"
+LBRACE: "{"
+RBRACE: "}"
+LPAREN: "("
+RPAREN: ")"
+COMMA: ","
+EQUALS: "="
+QUOTE: "\""
+
+// Identifier for citation keys, field names, and entry types (avoids "Proceedings" in text becoming PROCEEDINGS token)
+IDENTIFIER: /[a-zA-Z0-9_\-:.]+/
+
+// Inside braces: prefer \X over single chars so "\}" is one token
+ESCAPED_BRACE.2: /\\[{}]/
+BACKSLASH_OTHER.2: /\\[^{}]/
+OTHER_CHAR: /[^{}\\]/
+
+// Inside quotes: "" is escaped quote
+ESCAPED_QUOTE.2: "\"\""
+QUOTED_CHAR: /[^"]/
